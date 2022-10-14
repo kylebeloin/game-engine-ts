@@ -1,5 +1,6 @@
-const FPS = 60;
+const FPS = 30;
 const RESOLUTION = 8;
+const MAX_VELOCITY = 0.025;
 
 export class Engine {
   public world: World | null;
@@ -83,8 +84,10 @@ export class Engine {
   }
 
   public input(signal: string) {
-    this.signal = signal;
-    requestAnimationFrame(() => this.main());
+    if (this.running) {
+      this.signal = signal;
+      requestAnimationFrame(() => this.main());
+    }
   }
 
   private main() {
@@ -118,6 +121,10 @@ export class Engine {
     } | World Cells: ${this.world?.getWorld()?.at(0)?.at(0)} | Signal: ${
       this.signal
     }`;
+  }
+
+  public getSignal() {
+    return this.signal;
   }
 }
 
@@ -224,7 +231,9 @@ export class UserInterface {
 
     document.addEventListener("keyup", (e) => {
       // check if key is being held down
-      this.handleInput("");
+      if (e.key == this.userInput) {
+        this.handleInput("");
+      }
     });
   }
 }
@@ -233,12 +242,14 @@ export class Renderer {
   private engine: Engine;
   public canvas: HTMLCanvasElement;
   public context: CanvasRenderingContext2D;
+  public player: Player;
 
   constructor(engine: Engine) {
     console.log("Renderer created");
     this.engine = engine;
     this.canvas = document.getElementById("canvas") as HTMLCanvasElement;
     this.context = this.canvas.getContext("2d") as CanvasRenderingContext2D;
+    this.player = new Player(this.engine);
     this.drawGrid();
   }
 
@@ -262,6 +273,7 @@ export class Renderer {
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.drawDebug(this.engine.getDebugText());
     this.drawGrid();
+    this.drawPlayer();
   }
 
   private drawDebug(debugText: string): void {
@@ -269,6 +281,164 @@ export class Renderer {
       this.context.font = "20px Arial";
       this.context.fillStyle = "black";
       this.context.fillText(debugText, 10, 50);
+
+      this.context.fillText(`Velocity: ${this.player.getVelocity()}`, 10, 75);
+      this.context.fillText(
+        `Direction: ${JSON.stringify(this.player.getDirection())}`,
+        10,
+        100
+      );
+
+      this.context.fillText(`Player X: ${this.player.getX()}`, 10, 125);
+
+      this.context.fillText(`Player Y: ${this.player.getY()}`, 10, 150);
     }
+  }
+
+  public drawPlayer(): void {
+    if (this.context) {
+      this.context.fillStyle = "red";
+      this.context.fillRect(
+        (this.player.getX() * this.canvas.width) / RESOLUTION,
+        (this.player.getY() * this.canvas.height) / RESOLUTION,
+        this.player.getWidth(),
+        this.player.getHeight()
+      );
+    }
+    window.requestAnimationFrame(() => this.player.move());
+  }
+}
+
+export class Player {
+  private engine: Engine;
+  private x: number;
+  private y: number;
+  private speed: number;
+  private width: number;
+  private height: number;
+  private color: string;
+  private direction: { dx: number; dy: number };
+  private velocity: number;
+  private mass = 1.5;
+  private friction = 0.001;
+
+  constructor(engine: Engine) {
+    this.engine = engine;
+    this.x = 0;
+    this.y = 0;
+    this.speed = 0.02;
+    this.velocity = 0;
+    this.width = 10;
+    this.height = 10;
+    this.color = "red";
+    this.direction = { dx: 0, dy: 0 };
+  }
+
+  public getX(): number {
+    return this.x;
+  }
+
+  public getY(): number {
+    return this.y;
+  }
+
+  public getSpeed(): number {
+    return this.speed;
+  }
+
+  public getWidth(): number {
+    return this.width;
+  }
+
+  public getHeight(): number {
+    return this.height;
+  }
+
+  public getColor(): string {
+    return this.color;
+  }
+
+  public getDirection(): { dx: number; dy: number } {
+    return this.direction;
+  }
+
+  public getVelocity(): number {
+    return this.velocity;
+  }
+
+  public setX(x: number): void {
+    this.x = x;
+  }
+
+  public setY(y: number): void {
+    this.y = y;
+  }
+
+  public setSpeed(speed: number): void {
+    this.speed = speed;
+  }
+
+  public setWidth(width: number): void {
+    this.width = width;
+  }
+
+  public setHeight(height: number): void {
+    this.height = height;
+  }
+
+  public setColor(color: string): void {
+    this.color = color;
+  }
+
+  public setDirection(direction: { dx: number; dy: number }): void {
+    // get the direction of the player and calculate displacement
+
+    this.direction = direction;
+
+    if (
+      ((this.velocity < MAX_VELOCITY && this.direction.dx != 0) ||
+        (this.velocity < MAX_VELOCITY && this.direction.dy != 0)) &&
+      this.velocity < MAX_VELOCITY
+    ) {
+      this.velocity += (this.speed * this.mass) / 25;
+    }
+  }
+
+  public move(): void {
+    // increment velocity
+    if (this.velocity < 0) {
+      this.velocity = 0;
+    }
+
+    this.x += this.velocity * this.direction.dx;
+    this.y += this.velocity * this.direction.dy;
+    window.requestAnimationFrame(() => {
+      switch (this.engine.getSignal()) {
+        case "ArrowLeft":
+          this.setDirection({
+            dx: -1,
+            dy: 0,
+          });
+
+          break;
+        case "ArrowRight":
+          this.setDirection({ dx: 1, dy: 0 });
+          break;
+        case "ArrowUp":
+          this.setDirection({ dx: 0, dy: -1 });
+          break;
+        case "ArrowDown":
+          this.setDirection({ dx: 0, dy: 1 });
+          break;
+        default:
+          if (this.velocity > 0) {
+            this.velocity -= this.friction * this.mass;
+            this.setDirection(this.direction);
+          } else {
+            this.setDirection({ dx: 0, dy: 0 });
+          }
+          break;
+      }
+    });
   }
 }
