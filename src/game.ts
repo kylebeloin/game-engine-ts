@@ -1,7 +1,8 @@
+const FPS = 60;
+const RESOLUTION = 8;
+
 export class Engine {
-  private world: World;
-  private canvas: HTMLCanvasElement;
-  private context: CanvasRenderingContext2D;
+  public world: World | null;
   private fps: number;
   private fpsInterval: number;
   private startTime: number;
@@ -12,12 +13,11 @@ export class Engine {
   private debug: boolean;
   private debugText: string;
   private signal: string;
+  private renderer: Renderer;
 
   constructor() {
-    console.log("Initializing Engine");
-    this.canvas = document.getElementById("canvas") as HTMLCanvasElement;
-    this.context = this.canvas.getContext("2d") as CanvasRenderingContext2D;
-    this.fps = 60;
+    console.info("Initializing Engine");
+    this.fps = FPS;
     this.fpsInterval = 1000 / this.fps;
     this.startTime = 0;
     this.now = 0;
@@ -26,8 +26,9 @@ export class Engine {
     this.running = false;
     this.debug = true;
     this.debugText = "";
-    this.world = new World(10);
+    this.world = null;
     this.signal = "";
+    this.renderer = new Renderer(this);
   }
 
   public do(action: string) {
@@ -55,6 +56,8 @@ export class Engine {
     this.running = true;
     this.then = Date.now();
     this.startTime = this.then;
+    this.world = new World(this.renderer.canvas.width / 10);
+
     this.main();
   }
 
@@ -65,11 +68,18 @@ export class Engine {
   public pause() {
     this.running = !this.running;
     this.update();
-    this.draw();
+    this.renderer.draw();
   }
 
   public toggleDebug() {
     this.debug = !this.debug;
+  }
+
+  public getDebugText() {
+    if (this.debug) {
+      return this.debugText;
+    }
+    return "";
   }
 
   public input(signal: string) {
@@ -88,7 +98,7 @@ export class Engine {
     if (this.elapsed > this.fpsInterval) {
       this.then = this.now - (this.elapsed % this.fpsInterval);
       this.update();
-      this.draw();
+      this.renderer.draw();
     }
   }
 
@@ -103,21 +113,11 @@ export class Engine {
     }${
       (Math.floor((this.now - this.startTime) / this.fpsInterval) % this.fps) +
       1
-    } | Running: ${
-      this.running
-    } | World Size: ${this.world.getSize()} | World Cells: ${this.world
-      .getWorld()
-      ?.at(0)
-      ?.at(0)} | Signal: ${this.signal}`;
-  }
-
-  private draw() {
-    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    if (this.debug) {
-      this.context.fillStyle = "black";
-      this.context.font = "20px Arial";
-      this.context.fillText(this.debugText, 10, 20);
-    }
+    } | Running: ${this.running} | World Size: ${
+      this.world?.getSize() ?? 0
+    } | World Cells: ${this.world?.getWorld()?.at(0)?.at(0)} | Signal: ${
+      this.signal
+    }`;
   }
 }
 
@@ -221,8 +221,54 @@ export class UserInterface {
     document.addEventListener("keydown", (e) => {
       this.handleInput(e.key);
     });
+
     document.addEventListener("keyup", (e) => {
+      // check if key is being held down
       this.handleInput("");
     });
+  }
+}
+
+export class Renderer {
+  private engine: Engine;
+  public canvas: HTMLCanvasElement;
+  public context: CanvasRenderingContext2D;
+
+  constructor(engine: Engine) {
+    console.log("Renderer created");
+    this.engine = engine;
+    this.canvas = document.getElementById("canvas") as HTMLCanvasElement;
+    this.context = this.canvas.getContext("2d") as CanvasRenderingContext2D;
+    this.drawGrid();
+  }
+
+  private drawGrid(): void {
+    const cellSize = this.canvas.width / RESOLUTION;
+    this.context.strokeStyle = "#000000";
+    this.context.lineWidth = 1;
+    for (let i = 0; i < RESOLUTION + 1; i++) {
+      this.context.beginPath();
+      this.context.moveTo(i * cellSize, 0);
+      this.context.lineTo(i * cellSize, this.canvas.height);
+      this.context.stroke();
+      this.context.beginPath();
+      this.context.moveTo(0, i * cellSize);
+      this.context.lineTo(this.canvas.width, i * cellSize);
+      this.context.stroke();
+    }
+  }
+
+  public draw(): void {
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.drawDebug(this.engine.getDebugText());
+    this.drawGrid();
+  }
+
+  private drawDebug(debugText: string): void {
+    if (this.context) {
+      this.context.font = "20px Arial";
+      this.context.fillStyle = "black";
+      this.context.fillText(debugText, 10, 50);
+    }
   }
 }

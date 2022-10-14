@@ -1,17 +1,19 @@
 import { Engine, UserInterface } from "./game.js";
 
+const SIZE = 800;
+
 const root = document.getElementById("root");
 
 if (root) {
-  root.innerHTML = "Hello World";
   const canvas = document.createElement("canvas");
 
   canvas.id = "canvas";
-  canvas.width = 800;
+  canvas.width = SIZE;
   canvas.height = 600;
 
   root.appendChild(canvas);
 
   const engine = new Engine();
-  const ui = new UserInterface(engine, root);
+  const ui = engine && new UserInterface(engine, root);
+  ui && console.info("Game initialized");
 }
