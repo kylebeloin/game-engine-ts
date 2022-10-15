@@ -1,6 +1,6 @@
-const FPS = 30;
+const FPS = 60;
 const RESOLUTION = 8;
-const MAX_VELOCITY = 0.025;
+const MAX_VELOCITY = 0.05;
 
 export class Engine {
   public world: World | null;
@@ -14,7 +14,7 @@ export class Engine {
   private debug: boolean;
   private debugText: string;
   private signal: string;
-  private renderer: Renderer;
+  public renderer: Renderer;
 
   constructor() {
     console.info("Initializing Engine");
@@ -121,6 +121,10 @@ export class Engine {
     } | World Cells: ${this.world?.getWorld()?.at(0)?.at(0)} | Signal: ${
       this.signal
     }`;
+  }
+
+  public getDebug() {
+    return this.debug;
   }
 
   public getSignal() {
@@ -257,14 +261,24 @@ export class Renderer {
     const cellSize = this.canvas.width / RESOLUTION;
     this.context.strokeStyle = "#000000";
     this.context.lineWidth = 1;
-    for (let i = 0; i < RESOLUTION + 1; i++) {
+    if (this.engine.getDebug()) {
+      for (let i = 0; i < RESOLUTION + 1; i++) {
+        this.context.beginPath();
+        this.context.moveTo(i * cellSize, 0);
+        this.context.lineTo(i * cellSize, this.canvas.height);
+        this.context.stroke();
+        this.context.beginPath();
+        this.context.moveTo(0, i * cellSize);
+        this.context.lineTo(this.canvas.width, i * cellSize);
+        this.context.stroke();
+      }
+    } else {
       this.context.beginPath();
-      this.context.moveTo(i * cellSize, 0);
-      this.context.lineTo(i * cellSize, this.canvas.height);
-      this.context.stroke();
-      this.context.beginPath();
-      this.context.moveTo(0, i * cellSize);
-      this.context.lineTo(this.canvas.width, i * cellSize);
+      this.context.moveTo(0, 0);
+      this.context.lineTo(this.canvas.width, 0);
+      this.context.lineTo(this.canvas.width, this.canvas.height);
+      this.context.lineTo(0, this.canvas.height);
+      this.context.lineTo(0, 0);
       this.context.stroke();
     }
   }
@@ -277,7 +291,7 @@ export class Renderer {
   }
 
   private drawDebug(debugText: string): void {
-    if (this.context) {
+    if (this.context && this.engine.getDebug()) {
       this.context.font = "20px Arial";
       this.context.fillStyle = "black";
       this.context.fillText(debugText, 10, 50);
@@ -367,11 +381,30 @@ export class Player {
   }
 
   public setX(x: number): void {
-    this.x = x;
+    let maxX =
+      this.engine.renderer.canvas.width /
+      (this.engine.renderer.canvas.width / RESOLUTION);
+    if (x < 0) {
+      this.x = maxX;
+    } else if (x > maxX) {
+      this.x = 0;
+    } else {
+      this.x = x;
+    }
   }
 
   public setY(y: number): void {
-    this.y = y;
+    let maxY =
+      this.engine.renderer.canvas.height /
+      (this.engine.renderer.canvas.height / RESOLUTION);
+
+    if (y < 0) {
+      this.y = maxY;
+    } else if (y > maxY) {
+      this.y = 0;
+    } else {
+      this.y = y;
+    }
   }
 
   public setSpeed(speed: number): void {
@@ -400,7 +433,7 @@ export class Player {
         (this.velocity < MAX_VELOCITY && this.direction.dy != 0)) &&
       this.velocity < MAX_VELOCITY
     ) {
-      this.velocity += (this.speed * this.mass) / 25;
+      this.velocity += (this.friction * this.mass) / 2;
     }
   }
 
@@ -410,8 +443,10 @@ export class Player {
       this.velocity = 0;
     }
 
-    this.x += this.velocity * this.direction.dx;
-    this.y += this.velocity * this.direction.dy;
+    this.setX(
+      this.x + (this.velocity + this.friction * this.mass) * this.direction.dx
+    );
+    this.setY(this.y + this.velocity * this.direction.dy);
     window.requestAnimationFrame(() => {
       switch (this.engine.getSignal()) {
         case "ArrowLeft":
