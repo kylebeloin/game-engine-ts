@@ -1,6 +1,12 @@
 const FPS = 60;
 const RESOLUTION = 8;
 const MAX_VELOCITY = 0.05;
+const DIRS = {
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+};
 
 export class Engine {
   public world: World | null;
@@ -13,7 +19,7 @@ export class Engine {
   private running: boolean;
   private debug: boolean;
   private debugText: string;
-  private signal: string;
+  private signal: { [key: string]: boolean };
   public renderer: Renderer;
 
   constructor() {
@@ -28,7 +34,8 @@ export class Engine {
     this.debug = true;
     this.debugText = "";
     this.world = null;
-    this.signal = "";
+    // make signal a map of signals
+    this.signal = {};
     this.renderer = new Renderer(this);
   }
 
@@ -64,12 +71,14 @@ export class Engine {
 
   public stop() {
     this.running = false;
+    this.signal = {};
   }
 
   public pause() {
     this.running = !this.running;
     this.update();
     this.renderer.draw();
+    this.signal = {};
   }
 
   public toggleDebug() {
@@ -83,11 +92,15 @@ export class Engine {
     return "";
   }
 
-  public input(signal: string) {
+  public input(signal: { [key: string]: boolean }) {
     if (this.running) {
-      this.signal = signal;
+      requestAnimationFrame(() => this.setSignal(signal));
       requestAnimationFrame(() => this.main());
     }
+  }
+
+  private setSignal(signal: { [key: string]: boolean }) {
+    this.signal = { ...this.signal, ...signal };
   }
 
   private main() {
@@ -118,17 +131,22 @@ export class Engine {
       1
     } | Running: ${this.running} | World Size: ${
       this.world?.getSize() ?? 0
-    } | World Cells: ${this.world?.getWorld()?.at(0)?.at(0)} | Signal: ${
-      this.signal
-    }`;
+    } | World Cells: ${this.world
+      ?.getWorld()
+      ?.at(0)
+      ?.at(0)} | Signal: ${JSON.stringify(this.signal)}`;
   }
 
   public getDebug() {
     return this.debug;
   }
 
-  public getSignal() {
-    return this.signal;
+  public getSignal(key: string) {
+    return this.signal[key];
+  }
+
+  public getSignals() {
+    return Object.entries(this.signal);
   }
 }
 
@@ -185,7 +203,7 @@ export class UserInterface {
   private stopButton: HTMLButtonElement;
   private pauseButton: HTMLButtonElement;
   private debugButton: HTMLButtonElement;
-  private userInput: string | null = null;
+  private userInput: { [key: string]: boolean };
 
   constructor(engine: Engine, root: HTMLElement) {
     this.engine = engine;
@@ -194,6 +212,7 @@ export class UserInterface {
     this.stopButton = this.createButton("stopButton", "Stop", "stop");
     this.pauseButton = this.createButton("pauseButton", "Pause", "pause");
     this.debugButton = this.createButton("debugButton", "Debug", "debug");
+    this.userInput = {};
     this.initializeControls();
   }
 
@@ -223,21 +242,18 @@ export class UserInterface {
     return button;
   }
 
-  private handleInput(event: string): void {
+  private handleInput(event: { [key: string]: boolean }): void {
     this.userInput = event;
-    this.engine.input(event);
+    this.engine.input(this.userInput);
   }
 
   private initializeControls(): void {
     document.addEventListener("keydown", (e) => {
-      this.handleInput(e.key);
+      this.handleInput({ [e.key]: true });
     });
 
     document.addEventListener("keyup", (e) => {
-      // check if key is being held down
-      if (e.key == this.userInput) {
-        this.handleInput("");
-      }
+      this.handleInput({ [e.key]: false });
     });
   }
 }
@@ -292,11 +308,15 @@ export class Renderer {
 
   private drawDebug(debugText: string): void {
     if (this.context && this.engine.getDebug()) {
-      this.context.font = "20px Arial";
+      this.context.font = "12px Arial";
       this.context.fillStyle = "black";
       this.context.fillText(debugText, 10, 50);
 
-      this.context.fillText(`Velocity: ${this.player.getVelocity()}`, 10, 75);
+      this.context.fillText(
+        `Velocity: ${JSON.stringify(this.player.getVelocity())}`,
+        10,
+        75
+      );
       this.context.fillText(
         `Direction: ${JSON.stringify(this.player.getDirection())}`,
         10,
@@ -332,16 +352,17 @@ export class Player {
   private height: number;
   private color: string;
   private direction: { dx: number; dy: number };
-  private velocity: number;
-  private mass = 1.5;
+  // keep track of velocity in each direction
+  private velocity: { dx: number; dy: number };
+  private mass = 3;
   private friction = 0.001;
 
   constructor(engine: Engine) {
     this.engine = engine;
     this.x = 0;
     this.y = 0;
-    this.speed = 0.02;
-    this.velocity = 0;
+    this.speed = 0.5 * RESOLUTION;
+    this.velocity = { dx: 0, dy: 0 };
     this.width = 10;
     this.height = 10;
     this.color = "red";
@@ -376,7 +397,7 @@ export class Player {
     return this.direction;
   }
 
-  public getVelocity(): number {
+  public getVelocity(): { dx: number; dy: number } {
     return this.velocity;
   }
 
@@ -426,54 +447,102 @@ export class Player {
   public setDirection(direction: { dx: number; dy: number }): void {
     // get the direction of the player and calculate displacement
 
-    this.direction = direction;
+    this.velocity = {
+      dx:
+        direction.dx !== 0 && direction.dx
+          ? this.velocity.dx < MAX_VELOCITY
+            ? this.velocity.dx + (this.friction * this.mass) / 2
+            : this.velocity.dx
+          : this.velocity.dx - this.friction * this.mass,
+      dy:
+        direction.dy !== 0
+          ? this.velocity.dy < MAX_VELOCITY
+            ? this.velocity.dy + (this.friction * this.mass) / 2
+            : this.velocity.dy
+          : this.velocity.dy - this.friction * this.mass,
+    };
 
-    if (
-      ((this.velocity < MAX_VELOCITY && this.direction.dx != 0) ||
-        (this.velocity < MAX_VELOCITY && this.direction.dy != 0)) &&
-      this.velocity < MAX_VELOCITY
-    ) {
-      this.velocity += (this.friction * this.mass) / 2;
-    }
+    this.direction = {
+      dx:
+        direction.dx === 0
+          ? this.velocity.dx > 0
+            ? this.direction.dx
+            : 0
+          : direction.dx,
+      dy:
+        direction.dy === 0
+          ? this.velocity.dy > 0
+            ? this.direction.dy
+            : 0
+          : direction.dy,
+    };
+
+    // if (
+    //   (this.velocity.dx < MAX_VELOCITY && this.direction.dx != 0) ||
+    //   (this.velocity.dy < MAX_VELOCITY && this.direction.dy != 0)
+    // ) {
+    //   // this.velocity += (this.friction * this.mass) / 2;
+    //   this.velocity.dx += (this.friction * this.mass) / 2;
+    //   this.velocity.dy += (this.friction * this.mass) / 2;
+    // }
+  }
+
+  private calculateDirection(dirs: [string, boolean][]): {
+    dx: number;
+    dy: number;
+  } {
+    let newDirs = dirs.map((dir) => DIRS[dir[0] as keyof typeof DIRS]);
+    // check if any of the directions are true and return the direction; but if a direction is false and still has a velocity, keep the velocity and direction
+    let newDir = newDirs.reduce(
+      (a, b) => {
+        return { dx: a.dx + b[0], dy: a.dy + b[1] };
+      },
+      { dx: 0, dy: 0 }
+    );
+    return newDir;
   }
 
   public move(): void {
     // increment velocity
-    if (this.velocity < 0) {
-      this.velocity = 0;
+    if (this.velocity.dx < 0) {
+      this.velocity.dx = 0;
+    }
+    if (this.velocity.dy < 0) {
+      this.velocity.dy = 0;
     }
 
     this.setX(
-      this.x + (this.velocity + this.friction * this.mass) * this.direction.dx
+      this.x +
+        (this.velocity.dx + this.friction * this.mass) * this.direction.dx
     );
-    this.setY(this.y + this.velocity * this.direction.dy);
+    this.setY(this.y + this.velocity.dy * this.direction.dy);
+    let dirs = this.engine
+      .getSignals()
+      .filter((signal) => signal[1])
+      .filter((signal) => Object.keys(DIRS).includes(signal[0]));
     window.requestAnimationFrame(() => {
-      switch (this.engine.getSignal()) {
-        case "ArrowLeft":
-          this.setDirection({
-            dx: -1,
-            dy: 0,
-          });
-
-          break;
-        case "ArrowRight":
-          this.setDirection({ dx: 1, dy: 0 });
-          break;
-        case "ArrowUp":
-          this.setDirection({ dx: 0, dy: -1 });
-          break;
-        case "ArrowDown":
-          this.setDirection({ dx: 0, dy: 1 });
-          break;
-        default:
-          if (this.velocity > 0) {
-            this.velocity -= this.friction * this.mass;
-            this.setDirection(this.direction);
-          } else {
-            this.setDirection({ dx: 0, dy: 0 });
-          }
-          break;
+      if (dirs.length > 0) {
+        let newDir = this.calculateDirection(dirs);
+        this.setDirection(newDir);
+        // if there are multiple directions, we need to figure out which one to use
+        // add the directions together and then normalize
+      } else {
+        this.setDirection({ dx: 0, dy: 0 });
       }
     });
   }
 }
+
+// class Controls {
+//   private engine: Engine;
+
+//   constructor(engine: Engine) {
+//     this.engine = engine;
+//     window.addEventListener("keydown", (e) => {
+//       this.engine.setSignal(e.key);
+//     });
+//     window.addEventListener("keyup", (e) => {
+//       this.engine.setSignal("");
+//     });
+//   }
+// }

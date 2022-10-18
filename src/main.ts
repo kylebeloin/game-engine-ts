@@ -16,4 +16,5 @@ if (root) {
   const engine = new Engine();
   const ui = engine && new UserInterface(engine, root);
   ui && console.info("Game initialized");
+  engine && engine.start();
 }
